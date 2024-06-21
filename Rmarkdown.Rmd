@@ -1,0 +1,179 @@
+---
+title: "Final 2024 Take Home for Time Series"
+author: Jamiu Olamilekan Badmus
+date: "12-06-2024"
+output: pdf_document
+subtitle: Prof Yasin Kursat Onder
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+knitr::opts_chunk$set(fig.width=6, fig.height=4)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+## Data Preparation
+### Load the necessary libraries for the analysis
+```{r, include=TRUE}
+library(readr)
+library(dynlm)
+library(vars)
+library(car)
+library(tseries)
+library(lpirfs)
+library(urca)
+```
+### Load the data
+```{r}
+data <- read_csv("C:/Users/Jamiu/OneDrive - univ-lille.fr/Desktop/EGEI Second Semester - Ghent University/Applied Econometrics II/Time series/Final Exam Take home 2024/exam_2024.csv")
+spec(data)
+```
+
+### Data Preprocessing
+```{r}
+realoilprices <- ts(data$rpoil, start = c(1975, 2), frequency = 4)
+gdpdeflator <- ts(data$p, start = c(1975, 2), frequency = 4)
+realgdp <- ts(data$y, start = c(1975, 2), frequency = 4)
+SHOCKS <- ts(data$'oil consumption demand shocks', start = c(1975, 2), frequency = 4)
+```
+
+## 1. Plot the data, test for stationary and transformation if necessary
+### Plot the data
+```{r}
+plot(realoilprices, main = "Figure 1: Real Oil Prices", ylab = "Real Oil 
+     Prices", xlab = "Year")
+plot(gdpdeflator, main = "Figure 2: GDP Deflator", ylab = "GDP Deflator", 
+     xlab = "Year")
+plot(realgdp, main = "Figure 3: Real GDP", ylab = "Real GDP", xlab = "Year")
+```
+
+### Test for stationarity
+```{r}
+adfraw1 <- ur.df(realoilprices, type = c("trend"), lags = 4, selectlags = "AIC")
+summary(adfraw1)
+adfraw2 <- ur.df(gdpdeflator, type = c("trend"), lags = 4, selectlags = "AIC")
+summary(adfraw2)
+adfraw3 <- ur.df(realgdp, type = c("trend"), lags = 4, selectlags = "AIC")
+summary(adfraw3)
+```
+
+### Transformation of the series
+```{r}
+lrealoilprices <- log(realoilprices)
+inflation <- (diff(gdpdeflator)/gdpdeflator[-length(gdpdeflator)])*100
+lrealgdp <- log(realgdp)
+```
+
+### Plot the transformed data
+```{r}
+plot(lrealoilprices, main = "Figure 4: Log of Real Oil Prices", ylab = "Log of Real Oil Prices", 
+     xlab = "Year")
+plot(inflation, main = "Figure 5: Inflation", ylab = "Inflation", xlab = "Year")
+plot(lrealgdp, main = "Figure 6: Log of Real GDP", ylab = "Log of Real GDP",
+     xlab = "Year")
+```
+
+### Test for stationarity of the transformed data 
+### Level Stationarity testing
+```{r}
+adflv1 <- ur.df(lrealoilprices, type = c("trend"), lags = 4, 
+                selectlags = "AIC")
+summary(adflv1)
+adflv2 <- ur.df(inflation, type = c("trend"), lags = 4, selectlags = "AIC")
+summary(adflv2)
+adflv3 <- ur.df(lrealgdp, type = c("trend"), lags = 4, selectlags = "AIC")
+summary(adflv3)
+```
+
+### Compute First Differenced Series
+```{r}
+dlrealoilprices <- diff(lrealoilprices)
+dinflation <- diff(inflation)
+dlrealgdp <- diff(lrealgdp)
+```
+
+### First difference Stationarity testing
+```{r}
+adfdiff1 <- ur.df(dlrealoilprices, type = c("trend"), lags = 4, 
+                  selectlags = "AIC")
+summary(adfdiff1)
+adfdiff2 <- ur.df(dinflation, type = c("trend"), lags = 4, selectlags = "AIC")
+summary(adfdiff2)
+adfdiff3 <- ur.df(dlrealgdp, type = c("trend"), lags = 4, selectlags = "AIC")
+summary(adfdiff3)
+```
+
+### Plot the first differenced series
+```{r}
+plot(dlrealoilprices, main = "Figure 7: First Difference of Log of Real Oil Prices", 
+     ylab = "First Difference of Log of Real Oil Prices", xlab = "Year")
+plot(dinflation, main = "Figure 8: First Difference of Inflation", 
+     ylab = "First Difference of Inflation", xlab = "Year")
+plot(dlrealgdp, main = "Figure 9: First Difference of Log of Real GDP", 
+     ylab = "First Difference of Log of Real GDP", xlab = "Year")
+```
+
+## 2. Estimate a VAR model with the data
+### Combine the variables into a matrix 
+```{r}
+x = cbind(dlrealoilprices, dinflation, dlrealgdp)
+colnames(x) <- c("dlrealoilprices", "dinflation", "dlrealgdp")
+x <- x[-1, ]
+```
+
+### Determine the VAR lag length using AIC criterion
+```{r}
+VAR_lag <- VARselect(x, lag.max = 8, type = "const")
+print(VAR_lag)
+```
+
+### Determine the VAR lag length, specifically for AIC
+```{r}
+optimal_lag_AIC <- VAR_lag$selection["AIC(n)"]
+print(optimal_lag_AIC)
+```
+
+## 3. Estimate the VAR model with the optimal lag length
+```{r}
+VAR_model <- VAR(x, p = optimal_lag_AIC, type = "const")
+summary_VAR_model <- summary(VAR_model)
+print (summary_VAR_model)
+```
+
+### Impulse Response Function for horizon 8
+```{r}
+irf1 <- irf(VAR_model, impulse = "dlrealoilprices", response = "dlrealoilprices", 
+            n.ahead = 8)
+plot(irf1)
+irf2 <- irf(VAR_model, impulse = "dlrealoilprices", response = "dinflation",
+            n.ahead = 8)
+plot(irf2)
+irf3 <- irf(VAR_model, impulse = "dlrealoilprices", response = "dlrealgdp",
+            n.ahead = 8)
+plot(irf3)
+```
+
+## 4. Estimate Local projections for the four variables 
+### Combine the variables into a matrix 
+```{r}
+x1 = cbind(dlrealoilprices, dinflation, dlrealgdp, SHOCKS)
+colnames(x1) <- c("dlrealoilprices", "dinflation", "dlrealgdp", "SHOCKS")
+x1 <- x1[-c(1, 2), ]
+x1_ts <- ts(x1, start = c(1975, 4), frequency = 4)
+x1_df <- as.data.frame(x1_ts)
+```
+
+### Estimate the LP model with the optimal lag length
+```{r}
+lp <- lp_lin(x1_df, lags_endog_lin = optimal_lag_AIC,  trend = 0, 
+             shock_type = 1,confint= 1.96, hor=8, use_nw = TRUE)
+plot(lp)
+```
+
+### LP IRF plot 
+```{r}
+linear_plots <- plot_lin(lp)
+linear_plots[[4]] # IRF for dlrealoilprices
+linear_plots[[8]] # IRF for dinflation
+linear_plots[[12]] # IRF for dlrealgdp
+linear_plots[[16]] # IRF for SHOCKS
+```
